@@ -924,15 +924,20 @@ function HomeView({user,mr,gr,fr,appState,onEnterGroup,onLogout}){
           </div>
         )}
         {myGroups.map(g2=>(
-          <div key={g2.name} onClick={()=>onEnterGroup(g2)} style={{...st.card,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',transition:'border-color 0.15s',borderColor:T.border}} onMouseEnter={e=>e.currentTarget.style.borderColor=T.borderHi} onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div key={g2.name} style={{...st.card,display:'flex',alignItems:'center',justifyContent:'space-between',borderColor:T.border}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,flex:1,cursor:'pointer'}} onClick={()=>onEnterGroup(g2)}>
               <div style={{width:40,height:40,borderRadius:10,background:T.greenDim,border:`1px solid ${T.green}33`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>🏆</div>
               <div>
                 <div style={{fontWeight:600,fontSize:15,color:T.textPri,textTransform:'capitalize'}}>{g2.name}</div>
                 <div style={{fontSize:12,color:T.textSec,marginTop:2}}>{g2.members.length} participante{g2.members.length!==1?'s':''}{g2.admin===user&&' · Admin'}</div>
               </div>
             </div>
-            <span style={{color:T.textSec,fontSize:18,opacity:0.5}}>›</span>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              {g2.admin===user&&(
+                <button onClick={e=>{e.stopPropagation();if(!window.confirm('¿Borrar el grupo "'+g2.name+'"? Esta acción no se puede deshacer.'))return;const groups=DB['p26_groups']||{};delete groups[g2.name];persist('p26_groups',groups);}} style={{...st.btn('x'),padding:'6px 10px',fontSize:12,border:`1px solid ${T.red}33`}} title="Eliminar grupo">🗑</button>
+              )}
+              <span style={{color:T.textSec,fontSize:18,opacity:0.5,cursor:'pointer'}} onClick={()=>onEnterGroup(g2)}>›</span>
+            </div>
           </div>
         ))}
         {!showForm&&(<div style={{display:'flex',gap:8,marginTop:12}}>
@@ -967,6 +972,7 @@ function HomeView({user,mr,gr,fr,appState,onEnterGroup,onLogout}){
 // ─── GROUP VIEW ───────────────────────────────────────────────────────────────
 function GroupView({user,group,pred,savePred,mr,gr,fr,appState,allPreds,tab,setTab,onBack,onSaveResults,reloadAllPreds,setGroup}){
   if(!group)return null;
+  const {alerts,dismiss,browserPerm,requestPerm}=useNotifications(user,mr||{},pred,appState||{});
   const isAdmin=group.admin===user;
   const tabs=[{k:'picks',l:'Predicciones'},{k:'matches',l:'Partidos'},{k:'table',l:'Tabla'},...(isAdmin?[{k:'admin',l:'Admin'}]:[])];
   return(
