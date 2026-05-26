@@ -667,7 +667,7 @@ export default function App(){
   const fr=DB['p26_fr']||{podium:{},awards:{}};
   const appState=DB['p26_state']||{groupsFinished:false,tournamentFinished:false};
 
-  useEffect(()=>{preload(['p26_users','p26_groups','p26_mr','p26_gr','p26_fr','p26_state']).finally(()=>setReady(true));},[]);
+  useEffect(()=>{preload(['p26_users','p26_groups','p26_mr','p26_gr','p26_fr','p26_state','p26_invites']).finally(()=>setReady(true));},[]);
 
   const doLogin=(u)=>{setUser(u);setPred(DB[`p26_p_${u}`]||EMPTY());setView('home');};
   const doEnterGroup=(grp)=>{setGroup(grp);setAllPreds({});setTab('picks');setView('group');const preds={};Promise.all((grp.members||[]).map(m=>tryLoad(`p26_p_${m}`).then(()=>{if(DB[`p26_p_${m}`])preds[m]=DB[`p26_p_${m}`];}))).then(()=>setAllPreds({...preds}));};
@@ -698,17 +698,32 @@ function AuthView({onLogin}){
   // Validar código de invitación en tiempo real
   useEffect(()=>{
     if(invite.length===7){
-      const invites=DB['p26_invites']||{};
-      const inv=invites[invite];
-      setInviteGroup(inv?inv.group:null);
-      if(!inv)setMsg('Código de invitación inválido');
-      else setMsg('');
+      // Buscar directo en Firebase
+      fetch(`https://prode-mundial-2026-andacollo-default-rtdb.firebaseio.com/p26_invites/${invite}.json`)
+        .then(r=>r.json())
+        .then(inv=>{
+          if(inv&&inv.group){
+            setInviteGroup(inv.group);
+            setMsg('');
+          } else {
+            setInviteGroup(null);
+            setMsg('Código de invitación inválido');
+          }
+        })
+        .catch(()=>{
+          // Fallback a DB local
+          const invites=DB['p26_invites']||{};
+          const inv=invites[invite];
+          setInviteGroup(inv?inv.group:null);
+          if(!inv)setMsg('Código de invitación inválido');
+          else setMsg('');
+        });
     } else {
       setInviteGroup(null);
       if(invite.length>0&&msg==='Código de invitación inválido')setMsg('');
     }
   },[invite]);
-  const submit=()=>{
+  const submit=async()=>{
     const uv=u.trim().toLowerCase(),pv=p.trim();
     if(!uv||!pv){setMsg('Completá los dos campos');return;}
     const users=DB['p26_users']||{};
@@ -723,10 +738,21 @@ function AuthView({onLogin}){
       persist('p26_users',users);
       // Unirse al grupo si hay código de invitación
       if(inviteGroup){
-        const groups=DB['p26_groups']||{};
-        if(groups[inviteGroup]&&!groups[inviteGroup].members.includes(uv)){
-          groups[inviteGroup].members.push(uv);
-          persist('p26_groups',groups);
+        // Fetch grupos desde Firebase para tener data actualizada
+        try {
+          const r = await fetch('https://prode-mundial-2026-andacollo-default-rtdb.firebaseio.com/p26_groups.json');
+          const groups = await r.json() || {};
+          if(groups[inviteGroup]&&!groups[inviteGroup].members.includes(uv)){
+            groups[inviteGroup].members.push(uv);
+            DB['p26_groups']=groups;
+            await persist('p26_groups',groups);
+          }
+        } catch {
+          const groups=DB['p26_groups']||{};
+          if(groups[inviteGroup]&&!groups[inviteGroup].members.includes(uv)){
+            groups[inviteGroup].members.push(uv);
+            await persist('p26_groups',groups);
+          }
         }
       }
     }
@@ -1321,7 +1347,13 @@ function InvitePanel({group}) {
   useEffect(() => { loadCodes(); }, []);
 
   const loadCodes = async () => {
-    const invites = await (async () => { try { const raw=localStorage.getItem('p26_invites'); return raw?JSON.parse(raw):{}; } catch { return DB['p26_invites'] || {}; } })();
+    const invites = await (async () => {
+      try {
+        const r = await fetch('https://prode-mundial-2026-andacollo-default-rtdb.firebaseio.com/p26_invites.json');
+        const data = await r.json();
+        return data || {};
+      } catch { return DB['p26_invites'] || {}; }
+    })();
     DB['p26_invites'] = invites;
     const groupCodes = Object.entries(invites)
       .filter(([, v]) => v.group === group.name)
@@ -1336,7 +1368,7 @@ function InvitePanel({group}) {
     const invites = DB['p26_invites'] || {};
     invites[code] = { group: group.name, created: Date.now() };
     DB['p26_invites'] = invites;
-    try { localStorage.setItem('p26_invites', JSON.stringify(invites)); } catch {}
+    await persist('p26_invites', invites);
     await loadCodes();
     setGenerating(false);
   };
@@ -1345,7 +1377,7 @@ function InvitePanel({group}) {
     const invites = DB['p26_invites'] || {};
     delete invites[code];
     DB['p26_invites'] = invites;
-    try { localStorage.setItem('p26_invites', JSON.stringify(invites)); } catch {}
+    await persist('p26_invites', invites);
     await loadCodes();
   };
 
